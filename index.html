@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claro del Bosque — Taller de construcción</title>
+<title>Moki and Piku — Couzy Spaces</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -142,6 +142,9 @@
     border:1px solid rgba(234,179,94,.4);box-shadow:0 4px 12px rgba(0,0,0,.45);transition:transform .12s}
   .audBtn:hover{transform:scale(1.12)}
   .audBtn:not(.on){opacity:.4;filter:grayscale(.8)}
+  #photoFlash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:80}
+  #photoFlash.go{animation:phFlash .45s ease-out}
+  @keyframes phFlash{0%{opacity:.85}100%{opacity:0}}
   #catBtn{position:fixed;left:18px;top:302px;padding:8px 15px;border-radius:99px;cursor:pointer;
     background:linear-gradient(180deg,rgba(58,40,24,.92),rgba(40,27,16,.92));
     border:1px solid rgba(234,179,94,.4);color:var(--gold);font-size:13px;font-weight:600;
@@ -215,8 +218,8 @@
 <div id="vignette"></div>
 
 <div id="titleCard">
-  <h1>Claro del Bosque</h1>
-  <p>Taller de construcción en madera <span id="verTag"></span></p>
+  <h1>Moki and Piku</h1>
+  <p>— Couzy Spaces <span id="verTag"></span></p>
   <div id="lvlRow">
     <span id="lvlBadge">Nv 1</span>
     <span id="goldHud">🪙 0</span>
@@ -253,7 +256,9 @@
 <div id="audioCtl">
   <span id="musBtn" class="audBtn on" title="Música (M)">🎵</span>
   <span id="sndBtn" class="audBtn on" title="Efectos (N)">🔊</span>
+  <span id="photoBtn" class="audBtn on" title="Foto (F)">📷</span>
 </div>
+<div id="photoFlash"></div>
 <div id="catBtn">📖 Catálogo <span class="kbd2">C</span></div>
 <div id="catModal"></div>
 <div id="matBar"></div>
@@ -267,8 +272,8 @@
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.10.1';
-console.log('%cClaro del Bosque '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
+const GAME_VERSION = 'v1.11.0';
+console.log('%cMoki and Piku · Couzy Spaces '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
 const PLATEAU_R = 16;
@@ -562,7 +567,7 @@ function updateSky(dt){
   // relámpagos
   if(WX_DEFS[wxName].storm && wxCur.rain>.6 && Math.random()<dt*.16){
     flashI=1.15;
-    setTimeout(function(){ sfx.thunder(); }, 250+Math.random()*600);
+    setTimeout(function(){ sfx.thunder(); }, 900+Math.random()*1900);
   }
   if(flashI>0){
     renderer.toneMappingExposure += flashI*.9;
@@ -1908,10 +1913,19 @@ function spawnPiece(def, M, pos, rotY, key, tint, finish){
   return mesh;
 }
 function placePiece(){
-  if(renderer.xr.isPresenting && ctrlR && buildMenu.visible){
+  if(renderer.xr.isPresenting && ctrlR){
     setRayFromController(ctrlR);
-    const mh=ray.intersectObject(buildMenu, false);
-    if(mh.length){ menuClickAt(mh[0].uv); return; }
+    if(panelOrb.visible){
+      if(ray.intersectObject(panelOrb, false).length){ setPanelsHidden(false); return; }
+    }
+    if(vrCatPanel.visible){
+      const ch=ray.intersectObject(vrCatPanel, false);
+      if(ch.length){ vrCatClickAt(ch[0].uv); return; }
+    }
+    if(buildMenu.visible){
+      const mh=ray.intersectObject(buildMenu, false);
+      if(mh.length){ menuClickAt(mh[0].uv); return; }
+    }
   }
   if(selected && selected.tool){ applyTool(); return; }
   if(!selected || !lastPlacement || !lastPlacement.valid){
@@ -2139,6 +2153,7 @@ const sfx=(function(){
     chime(){ const a=ac(); if(!a) return;
       ping(659, a.currentTime+.02, .045, .9); ping(988, a.currentTime+.22, .035, 1.1); },
     tick(){ knock(420, .05, .09); },
+    shutter(){ knock(950,.04,.16); setTimeout(()=>knock(480,.05,.12),45); },
     setEnv(o){ env=o; },
     setMusic(b){ musicOn=b; if(musG) musG.gain.linearRampToValueAtTime(b?1:0, ctx.currentTime+.2); },
     setSound(b){ soundOn=b; if(sfxG) sfxG.gain.linearRampToValueAtTime(b?1:0, ctx.currentTime+.2); },
@@ -2339,6 +2354,7 @@ addEventListener('keydown', e=>{
   if(e.code==='KeyC') toggleCatalog();
   if(e.code==='KeyM') setMusicUI(!sfx.isMusic());
   if(e.code==='KeyN') setSoundUI(!sfx.isSound());
+  if(e.code==='KeyF') requestPhoto();
 });
 addEventListener('keyup', e=>keys[e.code]=false);
 
@@ -2517,6 +2533,7 @@ function selectCategory(i){
 function selChanged(){
   if(typeof vrHudMark==='function') vrHudMark();
   menuDirty=true;
+  if(typeof vrCatDirty!=='undefined') vrCatDirty=true;
 }
 function cycleVariant(d){
   if(!selected) return;
@@ -2715,6 +2732,7 @@ function setMusicUI(b){ sfx.setMusic(b); musBtn.classList.toggle('on', b); saveS
 function setSoundUI(b){ sfx.setSound(b); sndBtn.classList.toggle('on', b); saveSoon(); }
 musBtn.addEventListener('click', function(){ setMusicUI(!sfx.isMusic()); });
 sndBtn.addEventListener('click', function(){ setSoundUI(!sfx.isSound()); });
+document.getElementById('photoBtn').addEventListener('click', requestPhoto);
 catModal.addEventListener('click', function(e){ if(e.target===catModal) toggleCatalog(); });
 
 /* =====================================================================
@@ -2725,6 +2743,54 @@ let T=0, smokeT=0, fountT=0, riverT=0, riverLvl=0;
 let windK=1, skyN=0;
 function easeOutBack(t){ const c=1.70158; return 1 + (c+1)*Math.pow(t-1,3) + c*Math.pow(t-1,2); }
 
+let photoReq=false, photoRT=null;
+const polaroids=[];
+function requestPhoto(){ photoReq=true; }
+function doPhoto(){
+  const W=1280, H=720;
+  if(!photoRT) photoRT=new THREE.WebGLRenderTarget(W,H);
+  const pc=new THREE.PerspectiveCamera(55, W/H, .05, 300);
+  if(renderer.xr.isPresenting){
+    const xc=renderer.xr.getCamera(camera);
+    xc.matrixWorld.decompose(pc.position, pc.quaternion, pc.scale);
+  } else {
+    camera.updateMatrixWorld();
+    camera.matrixWorld.decompose(pc.position, pc.quaternion, pc.scale);
+  }
+  pc.scale.set(1,1,1); pc.updateMatrixWorld();
+  const wasXR=renderer.xr.enabled;
+  renderer.xr.enabled=false;
+  renderer.setRenderTarget(photoRT);
+  renderer.render(scene, pc);
+  const buf=new Uint8Array(W*H*4);
+  renderer.readRenderTargetPixels(photoRT, 0,0, W,H, buf);
+  renderer.setRenderTarget(null);
+  renderer.xr.enabled=wasXR;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const g=cv.getContext('2d');
+  const img=g.createImageData(W,H);
+  for(let y=0;y<H;y++){
+    img.data.set(buf.subarray((H-1-y)*W*4, (H-y)*W*4), y*W*4);
+  }
+  g.putImageData(img,0,0);
+  g.font='600 30px Fredoka, sans-serif';
+  g.fillStyle='rgba(255,235,200,.9)';
+  g.fillText('Moki and Piku · Couzy Spaces', 26, H-26);
+  cv.toBlob(function(b){
+    if(!b) return;
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download='moki-and-piku.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  });
+  if(renderer.xr.isPresenting && typeof showPolaroid==='function') showPolaroid(cv);
+  else {
+    const f=document.getElementById('photoFlash');
+    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  }
+  sfx.shutter();
+  toast('📷 ¡Foto guardada!');
+}
 let lastErr='';
 function reportErr(where, e){
   if(!lastErr) console.error(where, e);
@@ -2822,6 +2888,7 @@ function frameInner(){
     }
     riverLvl=Math.max(0, Math.min(1, 1-(Math.sqrt(d)-1.2)/7));
   }
+  if(photoReq){ photoReq=false; try{ doPhoto(); }catch(e){ reportErr('foto', e); } }
   if(renderer.xr.isPresenting){
     // posición real de la cabeza
     const xrCam=renderer.xr.getCamera(camera);
@@ -2854,18 +2921,53 @@ function frameInner(){
     }
     // hover del láser sobre el menú
     menuHover=false; menuCursor.visible=false;
-    if(ctrlR && buildMenu.visible){
+    if(ctrlR){
       setRayFromController(ctrlR);
-      const mh=ray.intersectObject(buildMenu, false);
-      if(mh.length){
-        menuHover=true;
-        menuCursor.visible=true;
-        menuCursor.position.copy(mh[0].point);
+      const targets=[];
+      if(panelOrb.visible) targets.push(panelOrb);
+      if(vrCatPanel.visible) targets.push(vrCatPanel);
+      if(buildMenu.visible) targets.push(buildMenu);
+      if(targets.length){
+        const mh=ray.intersectObjects(targets, false);
+        if(mh.length){
+          menuHover=true;
+          menuCursor.visible=true;
+          menuCursor.position.copy(mh[0].point);
+        }
+      }
+    }
+    // el catálogo y el orbe se colocan frente a ti
+    if(headPos.lengthSq()>0.01){
+      if(vrCatPanel.visible){
+        vrCatPanel.position.set(
+          headPos.x + headFwd.x*0.95,
+          headPos.y - 0.06,
+          headPos.z + headFwd.z*0.95);
+        vrCatPanel.lookAt(headPos);
+      }
+      if(panelOrb.visible){
+        panelOrb.position.set(
+          headPos.x + headFwd.x*0.9 - headFwd.z*0.4,
+          headPos.y - 0.18,
+          headPos.z + headFwd.z*0.9 + headFwd.x*0.4);
+      }
+    }
+    // polaroids: flotan y se desvanecen
+    for(let i=polaroids.length-1;i>=0;i--){
+      const ph=polaroids[i];
+      ph.t+=dt;
+      ph.mesh.position.y += dt*.012;
+      if(ph.t>2.6) ph.mesh.material.opacity=Math.max(0, 1-(ph.t-2.6)/1.2);
+      if(ph.t>3.8){
+        scene.remove(ph.mesh);
+        ph.mesh.material.map.dispose(); ph.mesh.material.dispose();
+        polaroids.splice(i,1);
       }
     }
     hudCool-=dt;
     if(hudDirty && hudCool<=0){ drawVrHud(); hudDirty=false; hudCool=.35; }
     if(menuDirty){ drawBuildMenu(); menuDirty=false; }
+    if(vrCatDirty && vrCatPanel.visible){ drawVrCat(); vrCatDirty=false; }
   }
   // crecimiento del terreno
   if(growAnim){
@@ -2989,7 +3091,7 @@ function drawVrHud(){
   g.textAlign='left';
   g.fillStyle='#eab35e'; g.font='700 32px Fredoka, sans-serif';
   const wxEl=document.getElementById('wxHud');
-  g.fillText('⭐ Nv '+level+'   🪙 '+gold+'   '+(wxEl?wxEl.textContent:''), 26, 42);
+  g.fillText('⭐ Nv '+level+'  🪙 '+gold+'  🧱 '+pieceCount+'  '+(wxEl?wxEl.textContent:''), 26, 42);
   // barra XP
   g.fillStyle='rgba(0,0,0,.5)'; g.fillRect(26,66,460,14);
   g.fillStyle='#eab35e'; g.fillRect(26,66, 460*Math.min(1,xp/xpNeed(level)), 14);
@@ -3137,11 +3239,166 @@ function drawBuildMenu(){
     else sel=selected.name+' · '+MATERIALS[selMat].name;
   }
   g.fillText('🔨 '+sel, 16, 296);
-  g.fillStyle='rgba(246,232,207,.55)'; g.font='400 16px Fredoka, sans-serif';
-  g.fillText('Apunta con el láser y dispara el gatillo para elegir', 16, 326);
-  g.fillText('Stick der. ↕ también cambia de categoría · A variante · B material', 16, 352);
+  mmBtn(g, 14, 314, 198, 50, '📖 Catálogo', vrCatOpen, false);
+  menuRegions.push({x:14,y:314,w:198,h:50, fn:function(){ vrCatToggle(); }});
+  mmBtn(g, 222, 314, 198, 50, '📷 Foto', false, false);
+  menuRegions.push({x:222,y:314,w:198,h:50, fn:function(){ requestPhoto(); }});
+  mmBtn(g, 430, 314, 196, 50, '👁 Ocultar', false, false);
+  menuRegions.push({x:430,y:314,w:196,h:50, fn:function(){ setPanelsHidden(true); }});
   menuTex.needsUpdate=true;
 }
+/* ---------- catálogo VR (paginado, clicable con láser) ---------- */
+const catCv=document.createElement('canvas'); catCv.width=800; catCv.height=540;
+const catTex=new THREE.CanvasTexture(catCv);
+const vrCatPanel=new THREE.Mesh(new THREE.PlaneGeometry(.74,.4995),
+  new THREE.MeshBasicMaterial({map:catTex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
+vrCatPanel.visible=false; scene.add(vrCatPanel);
+let vrCatOpen=false, vrCatPage=0, vrCatDirty=true, catRegions=[];
+const CAT_PAGES=[[0,1,2,3],[4,5,6,7],[8,9,'mat','ter']];
+
+function vrCatToggle(){ vrCatOpen=!vrCatOpen; vrCatPanel.visible=vrCatOpen && renderer.xr.isPresenting; vrCatDirty=true; menuDirty=true; sfx.tick(); }
+
+function catCell(g, x, y, title, lines){
+  g.fillStyle='rgba(74,53,34,.55)';
+  g.beginPath();
+  if(g.roundRect) g.roundRect(x,y,380,224,12); else g.rect(x,y,380,224);
+  g.fill();
+  g.strokeStyle='rgba(234,179,94,.25)'; g.lineWidth=1.5; g.stroke();
+  g.textAlign='left'; g.textBaseline='middle';
+  g.fillStyle='#eab35e'; g.font='600 21px Fredoka, sans-serif';
+  g.fillText(title, x+14, y+24);
+  g.font='400 17px Fredoka, sans-serif';
+  lines.forEach(function(L,i){
+    g.fillStyle=L.gold? '#ffe2a8' : (L.lk? 'rgba(246,232,207,.45)' : '#f6e8cf');
+    g.fillText(L.t, x+14, y+52+i*22);
+  });
+}
+function drawVrCat(){
+  const g=catCv.getContext('2d');
+  catRegions=[];
+  g.clearRect(0,0,800,540);
+  g.fillStyle='rgba(40,27,16,.96)';
+  g.beginPath();
+  if(g.roundRect) g.roundRect(2,2,796,536,22); else g.rect(2,2,796,536);
+  g.fill();
+  g.strokeStyle='rgba(234,179,94,.6)'; g.lineWidth=3; g.stroke();
+  g.textAlign='left'; g.textBaseline='middle';
+  g.fillStyle='#eab35e'; g.font='700 26px Fredoka, sans-serif';
+  g.fillText('📖 Catálogo · ⭐ Nv '+level+' · 🪙 '+gold, 56, 32);
+  // puntos de página
+  for(let i=0;i<CAT_PAGES.length;i++){
+    g.beginPath(); g.arc(560+i*26, 32, 7, 0, Math.PI*2);
+    g.fillStyle = (i===vrCatPage)? '#eab35e' : 'rgba(234,179,94,.3)';
+    g.fill();
+  }
+  // cerrar
+  g.fillStyle='rgba(192,84,56,.9)';
+  g.beginPath();
+  if(g.roundRect) g.roundRect(744,10,44,40,10); else g.rect(744,10,44,40);
+  g.fill();
+  g.fillStyle='#fff'; g.font='600 22px sans-serif'; g.textAlign='center';
+  g.fillText('✕', 766, 31);
+  catRegions.push({x:744,y:10,w:44,h:40, fn:function(){ vrCatToggle(); }});
+  // flechas
+  g.fillStyle='rgba(234,179,94,.85)'; g.font='700 34px sans-serif';
+  g.fillText('◀', 22, 270); g.fillText('▶', 778, 270);
+  catRegions.push({x:0,y:60,w:46,h:480, fn:function(){ vrCatPage=(vrCatPage+CAT_PAGES.length-1)%CAT_PAGES.length; vrCatDirty=true; sfx.tick(); }});
+  catRegions.push({x:754,y:60,w:46,h:480, fn:function(){ vrCatPage=(vrCatPage+1)%CAT_PAGES.length; vrCatDirty=true; sfx.tick(); }});
+  // celdas 2×2
+  const cells=[[14,66],[406,66],[14,300],[406,300]];
+  CAT_PAGES[vrCatPage].forEach(function(sec,ci){
+    const cx=cells[ci][0]+38, cy=cells[ci][1];
+    if(sec==='mat'){
+      const lines=MATERIALS.map(function(m){
+        const lk=!isUnlockedMat(m);
+        return {t:(lk?'🔒 ':'✓ ')+m.name+(lk?'  · Nv '+m.at:''), lk:lk,
+          gold: lk && m.at===nextMatUnlockLvl()};
+      });
+      catCell(g, cx, cy, '🪵 Materiales', lines);
+    } else if(sec==='ter'){
+      const lines=EXPANSIONS.map(function(ex,i){
+        if(i<expansions) return {t:'✓ Ampliación '+['I','II','III'][i]+' comprada', lk:false};
+        if(i===expansions){
+          return {t:'→ Ampliación '+['I','II','III'][i]+' · Nv '+ex.lvl+' · '+ex.cost+' 🪙', gold:true};
+        }
+        return {t:'Ampliación '+['I','II','III'][i]+' · Nv '+ex.lvl+' · '+ex.cost+' 🪙', lk:true};
+      });
+      catCell(g, cx, cy, '🌍 Terreno', lines);
+      const ex=EXPANSIONS[expansions];
+      if(ex){
+        const ok=(level>=ex.lvl && gold>=ex.cost);
+        g.fillStyle= ok? 'rgba(122,168,96,.9)' : 'rgba(90,70,50,.9)';
+        g.beginPath();
+        if(g.roundRect) g.roundRect(cx+14, cy+160, 200, 46, 10); else g.rect(cx+14, cy+160, 200, 46);
+        g.fill();
+        g.fillStyle= ok? '#fff' : 'rgba(246,232,207,.5)';
+        g.font='600 20px Fredoka, sans-serif'; g.textAlign='center';
+        g.fillText('Ampliar terreno', cx+114, cy+184);
+        g.textAlign='left';
+        catRegions.push({x:cx+14, y:cy+160, w:200, h:46, fn:function(){ buyExpansion(expansions); vrCatDirty=true; }});
+      }
+    } else {
+      const c=CATS[sec];
+      const lines=c.vars.map(function(v){
+        const lk=!isUnlockedDef(v);
+        return {t:(lk?'🔒 ':'✓ ')+v.name+(lk?'  · Nv '+v.at:''), lk:lk,
+          gold: lk && v.at===nextUnlockLvl()};
+      });
+      catCell(g, cx, cy, c.name, lines);
+    }
+  });
+  catTex.needsUpdate=true;
+}
+function vrCatClickAt(uv){
+  const px=uv.x*800, py=(1-uv.y)*540;
+  for(const r of catRegions){
+    if(px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h){ r.fn(); vrPulse(.35,25); return true; }
+  }
+  return false;
+}
+function nextUnlockLvl(){
+  let best=99;
+  CATS.forEach(function(c){ c.vars.forEach(function(v){ if(v.at>level && v.at<best) best=v.at; }); });
+  return best;
+}
+function nextMatUnlockLvl(){
+  let best=99;
+  MATERIALS.forEach(function(m){ if(m.at>level && m.at<best) best=m.at; });
+  return best;
+}
+
+/* ---------- ocultar/mostrar paneles ---------- */
+let panelsHidden=false;
+const panelOrb=new THREE.Mesh(new THREE.SphereGeometry(.032,12,8),
+  new THREE.MeshBasicMaterial({color:0xeab35e, fog:false}));
+panelOrb.visible=false; scene.add(panelOrb);
+function setPanelsHidden(b){
+  panelsHidden=b;
+  const pres=renderer.xr.isPresenting;
+  buildMenu.visible = !b && pres;
+  hudPanel.visible  = !b && pres;
+  vrCatPanel.visible= !b && pres && vrCatOpen;
+  panelOrb.visible  =  b && pres;
+  if(!b){ menuDirty=true; hudDirty=true; vrCatDirty=true; }
+  sfx.tick();
+}
+
+/* ---------- polaroid: la foto aparece flotando unos segundos ---------- */
+function showPolaroid(cv){
+  const fr=document.createElement('canvas'); fr.width=cv.width+56; fr.height=cv.height+96;
+  const fg=fr.getContext('2d');
+  fg.fillStyle='#f4efe4'; fg.fillRect(0,0,fr.width,fr.height);
+  fg.drawImage(cv, 28, 28);
+  const tex=new THREE.CanvasTexture(fr);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(.44, .44*fr.height/fr.width),
+    new THREE.MeshBasicMaterial({map:tex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
+  m.position.copy(headPos).addScaledVector(headFwd, .7);
+  m.position.y -= .05;
+  m.lookAt(headPos);
+  scene.add(m);
+  polaroids.push({mesh:m, t:0});
+}
+
 function menuClickAt(uv){
   const px=uv.x*640, py=(1-uv.y)*380;
   for(const r of menuRegions){
@@ -3352,6 +3609,7 @@ plotGlow.userData.baseDist=plotGlow.distance;
 renderer.xr.addEventListener('sessionstart', function(){
  try{
   controllers.forEach(function(c){ c.visible=true; });
+  panelsHidden=false; vrCatOpen=false; vrCatPanel.visible=false; panelOrb.visible=false;
   hudPanel.visible=true; hudDirty=true;
   buildMenu.visible=true; menuDirty=true;
   drawVrHud();
@@ -3379,6 +3637,9 @@ renderer.xr.addEventListener('sessionend', function(){
   controllers.forEach(function(c){ c.visible=false; });
   hudPanel.visible=false;
   buildMenu.visible=false; menuCursor.visible=false; menuHover=false;
+  vrCatPanel.visible=false; vrCatOpen=false; panelOrb.visible=false; panelsHidden=false;
+  polaroids.forEach(function(ph){ scene.remove(ph.mesh); });
+  polaroids.length=0;
   scaleParticleMats(1);
   sun.shadow.mapSize.set(2048,2048);
   if(sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map=null; }
