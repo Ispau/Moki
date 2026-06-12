@@ -136,7 +136,13 @@
   .swatch.sel{border-color:var(--gold);box-shadow:0 0 10px rgba(234,179,94,.65)}
   .swatch.lk{opacity:.4;filter:grayscale(.5)}
   .swatch .mini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px}
-  #catBtn{position:fixed;left:18px;top:255px;padding:8px 15px;border-radius:99px;cursor:pointer;
+  #audioCtl{position:fixed;left:18px;top:255px;display:flex;gap:7px}
+  .audBtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:16px;background:linear-gradient(180deg,rgba(58,40,24,.92),rgba(40,27,16,.92));
+    border:1px solid rgba(234,179,94,.4);box-shadow:0 4px 12px rgba(0,0,0,.45);transition:transform .12s}
+  .audBtn:hover{transform:scale(1.12)}
+  .audBtn:not(.on){opacity:.4;filter:grayscale(.8)}
+  #catBtn{position:fixed;left:18px;top:302px;padding:8px 15px;border-radius:99px;cursor:pointer;
     background:linear-gradient(180deg,rgba(58,40,24,.92),rgba(40,27,16,.92));
     border:1px solid rgba(234,179,94,.4);color:var(--gold);font-size:13px;font-weight:600;
     box-shadow:0 5px 16px rgba(0,0,0,.45);transition:transform .14s}
@@ -244,6 +250,10 @@
   <div class="row"><span>Modo paseo</span><span class="kbd">0 / Esc</span></div>
 </div>
 
+<div id="audioCtl">
+  <span id="musBtn" class="audBtn on" title="Música (M)">🎵</span>
+  <span id="sndBtn" class="audBtn on" title="Efectos (N)">🔊</span>
+</div>
 <div id="catBtn">📖 Catálogo <span class="kbd2">C</span></div>
 <div id="catModal"></div>
 <div id="matBar"></div>
@@ -257,7 +267,7 @@
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.9.0';
+const GAME_VERSION = 'v1.10.1';
 console.log('%cClaro del Bosque '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
@@ -410,15 +420,17 @@ const WX_DEFS={
   mist:   {cloud:.45, fogN:4.5,fogF:17, fogG:.8,  rain:0, wind:.5,  light:.6,  storm:false, icon:'🌫️', msg:'La niebla espesa abraza el claro'},
   rain:   {cloud:.95, fogN:9,  fogF:28, fogG:.45, rain:1, wind:1.5, light:.55, storm:false, icon:'🌧️', msg:'Empieza a llover…'},
   storm:  {cloud:1,   fogN:8,  fogF:24, fogG:.4,  rain:1, wind:2.7, light:.4,  storm:true,  icon:'⛈️', msg:'¡Tormenta sobre el bosque!'},
+  snow:   {cloud:.8,  fogN:7,  fogF:26, fogG:.6,  rain:0, snow:1, wind:.55, light:.7, storm:false, icon:'❄️', msg:'Comienzan a caer copos de nieve'},
 };
 let wxName='clear';
 const wxCur=Object.assign({}, WX_DEFS.clear);
 let wxTimer=45, flashI=0, rainOp=0;
 function pickWeather(){
-  const pool=['clear','clear','clouds','clouds','mist','rain','rain','storm'].filter(function(w){return w!==wxName;});
+  const pool=['clear','clear','clouds','clouds','mist','rain','rain','storm','snow','snow'].filter(function(w){return w!==wxName;});
   wxName=pool[Math.floor(Math.random()*pool.length)];
   const W=WX_DEFS[wxName];
   toast(W.icon+' '+W.msg);
+  sfx.chime();
   const el=document.getElementById('wxHud'); if(el) el.textContent=W.icon;
   wxTimer=55+Math.random()*70;
 }
@@ -451,19 +463,34 @@ const rainMat=new THREE.PointsMaterial({color:0xaac8dc, size:.075, transparent:t
 rainMat.userData={baseSize:.075}; particleMats.push(rainMat);
 const rainPts=new THREE.Points(rainGeo, rainMat);
 world.add(rainPts);
+const SNOW_N=240;
+const snowGeo=new THREE.BufferGeometry();
+{
+  const pos=new Float32Array(SNOW_N*3);
+  for(let i=0;i<SNOW_N;i++){
+    pos[i*3]=(Math.random()-.5)*30; pos[i*3+1]=Math.random()*13; pos[i*3+2]=(Math.random()-.5)*30;
+  }
+  snowGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+}
+const snowMat=new THREE.PointsMaterial({color:0xf2f6fa, size:.11, transparent:true, opacity:0, depthWrite:false});
+snowMat.userData={baseSize:.11}; particleMats.push(snowMat);
+const snowPts=new THREE.Points(snowGeo, snowMat);
+world.add(snowPts);
+let snowOp=0;
 
 function updateSky(dt){
   // clima: transición suave hacia el objetivo
   wxTimer-=dt; if(wxTimer<=0) pickWeather();
   const W=WX_DEFS[wxName], lk=Math.min(1, dt*.45);
-  ['cloud','fogN','fogF','fogG','rain','wind','light'].forEach(function(kk){
-    wxCur[kk]+= (W[kk]-wxCur[kk])*lk;
+  ['cloud','fogN','fogF','fogG','rain','snow','wind','light'].forEach(function(kk){
+    wxCur[kk]+= ((W[kk]||0)-(wxCur[kk]||0))*lk;
   });
   windK = wxCur.wind;
   // ciclo solar
   const cyc=((T/DAY_LEN)+0.22)%1;
   const sunUp=Math.max(0, Math.sin(cyc*Math.PI*2));
   const nightUp=Math.max(0, -Math.sin(cyc*Math.PI*2));
+  skyN=nightUp;
   const wl=wxCur.light;
   sun.color.copy(SUN_WARM).lerp(MOON, nightUp);
   const vr = renderer.xr.isPresenting;
@@ -512,6 +539,26 @@ function updateSky(dt){
     }
     arr.needsUpdate=true;
   }
+  // nieve
+  snowOp += ((wxCur.snow||0) - snowOp)*Math.min(1, dt*.6);
+  snowMat.opacity = snowOp*.85;
+  if(snowOp>0.02){
+    const arr=snowGeo.attributes.position;
+    for(let i=0;i<SNOW_N;i++){
+      let y=arr.getY(i) - (0.75+(i%4)*.14)*dt;
+      let x=arr.getX(i) + Math.sin(T*.9+i)*dt*.32;
+      let floorY=0;
+      if(coveredTop.size){
+        const k=Math.round(x/C)+':'+Math.round(arr.getZ(i)/C);
+        const t2=coveredTop.get(k);
+        if(t2!==undefined) floorY=t2;
+      }
+      if(y<floorY){ y=12+Math.random(); }
+      if(x>15.5) x=-15.5;
+      arr.setY(i,y); arr.setX(i,x);
+    }
+    arr.needsUpdate=true;
+  }
   // relámpagos
   if(WX_DEFS[wxName].storm && wxCur.rain>.6 && Math.random()<dt*.16){
     flashI=1.15;
@@ -544,8 +591,13 @@ function mergeParts(parts){
       N.push(na.getX(i), na.getY(i), na.getZ(i));
       Col.push(tmp.r, tmp.g, tmp.b);
     }
-    const idx=g.index.array;
-    for(let i=0;i<idx.length;i++) I.push(idx[i]+off);
+    if(g.index){
+      const idx=g.index.array;
+      for(let i=0;i<idx.length;i++) I.push(idx[i]+off);
+    } else {
+      // geometrías sin índice (p. ej. IcosahedronGeometry)
+      for(let i=0;i<pa.count;i++) I.push(i+off);
+    }
     off += pa.count;
     g.dispose();
   }
@@ -666,6 +718,85 @@ world.add(grid);
   const mesh=new THREE.Mesh(deco, craftMat);
   mesh.castShadow=true; mesh.receiveShadow=true; ground.add(mesh);
 }
+// río que cruza el claro (fuera de la parcela; crece con la isla)
+const riverPts=[];
+let riverFlowMat=null;
+{
+  const N=26, w=0.85;
+  const pos=[], col=[], uv=[], idx=[];
+  const cW=new THREE.Color(0x44788f), tmp=new THREE.Color();
+  let prev=null;
+  for(let i=0;i<=N;i++){
+    const t=i/N;
+    const a=(-78 + t*108) * Math.PI/180;
+    const r=12.5 + Math.sin(t*6.1)*0.75;
+    const cx=Math.cos(a)*r, cz=Math.sin(a)*r;
+    riverPts.push(new THREE.Vector3(cx,0,cz));
+    const a2=a+0.012, r2=12.5+Math.sin((t+0.005)*6.1)*0.75;
+    let tx=Math.cos(a2)*r2-cx, tz=Math.sin(a2)*r2-cz;
+    const L=Math.hypot(tx,tz)||1; tx/=L; tz/=L;
+    const nx=-tz, nz=tx;
+    for(const sgn of [-1,1]){
+      pos.push(cx+nx*w*sgn, 0.028, cz+nz*w*sgn);
+      tmp.copy(cW).offsetHSL(0,0,(Math.random()-.5)*.05 + (sgn<0?.025:-.02));
+      // fundido del borde del mundo
+      const f=rimFade(Math.hypot(cx+nx*w*sgn, cz+nz*w*sgn));
+      col.push(tmp.r*f, tmp.g*f, tmp.b*f);
+      uv.push(t*7, sgn<0?0:1);
+    }
+    if(i<N){ const b=i*2; idx.push(b,b+1,b+2, b+1,b+3,b+2); }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const water=new THREE.Mesh(g, new THREE.MeshStandardMaterial(
+    {vertexColors:true, roughness:.3, metalness:.08}));
+  water.receiveShadow=true; ground.add(water);
+  // espuma en movimiento
+  const fc=document.createElement('canvas'); fc.width=64; fc.height=64;
+  const fg=fc.getContext('2d');
+  fg.strokeStyle='rgba(235,245,250,.85)'; fg.lineWidth=2.2; fg.lineCap='round';
+  for(let k=0;k<7;k++){
+    fg.beginPath();
+    const y=6+k*9+(Math.random()*4);
+    fg.moveTo(Math.random()*10, y);
+    fg.lineTo(18+Math.random()*30, y+(Math.random()-.5)*5);
+    fg.stroke();
+  }
+  const ftex=new THREE.CanvasTexture(fc);
+  ftex.wrapS=THREE.RepeatWrapping; ftex.wrapT=THREE.RepeatWrapping;
+  riverFlowMat=new THREE.MeshBasicMaterial({map:ftex, transparent:true, opacity:.3,
+    depthWrite:false});
+  const foam=new THREE.Mesh(g, riverFlowMat);
+  foam.position.y=0.012; ground.add(foam);
+  // orillas: piedras y juncos
+  const bank=[];
+  for(let i=0;i<N;i+=2){
+    const c0=riverPts[i];
+    const a=Math.atan2(c0.z,c0.x);
+    for(const sgn of [-1,1]){
+      const rr=Math.hypot(c0.x,c0.z)+sgn*1.15;
+      const bx=Math.cos(a)*rr, bz=Math.sin(a)*rr;
+      if(Math.random()<.6)
+        bank.push({geo:new THREE.IcosahedronGeometry(.12+Math.random()*.12,0),
+          x:bx, y:.07, z:bz, ry:Math.random()*3, c:0x97928a});
+      if(Math.random()<.5){
+        bank.push({geo:new THREE.CylinderGeometry(.015,.02,.55,4),
+          x:bx+(Math.random()-.5)*.3, y:.28, z:bz+(Math.random()-.5)*.3,
+          rz:(Math.random()-.5)*.25, c:0x5d7a44});
+        bank.push({geo:new THREE.CylinderGeometry(.035,.035,.14,5),
+          x:bx+(Math.random()-.5)*.3, y:.56, z:bz+(Math.random()-.5)*.3, c:0x6b513a});
+      }
+    }
+  }
+  const bm=mergeParts(bank);
+  fadeGeometryByRadius(bm, false);
+  const bankMesh=new THREE.Mesh(bm, craftMat);
+  bankMesh.castShadow=true; ground.add(bankMesh);
+}
+
 // árboles, rocas, farolillo
 {
   const treeAt=(x,z,s)=>{
@@ -1862,41 +1993,157 @@ function dustAt(x,y,z,o){
    SONIDO (martillazos de carpintero, síntesis WebAudio)
    ===================================================================== */
 const sfx=(function(){
-  let ctx=null, combo=0, lastT=0;
-  function ac(){ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  let ctx=null, combo=0, lastT=0, started=false;
+  let sfxG=null, musG=null, rainG=null, windG=null, riverG=null;
+  let musicOn=true, soundOn=true, env={rain:0,wind:1,river:0,night:0,storm:false};
+  function ac(){
+    if(!ctx){
+      try{
+        ctx=new (window.AudioContext||window.webkitAudioContext)();
+        const lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=7800;
+        sfxG=ctx.createGain(); sfxG.gain.value=soundOn?1:0; sfxG.connect(lp); lp.connect(ctx.destination);
+        musG=ctx.createGain(); musG.gain.value=musicOn?1:0; musG.connect(ctx.destination);
+      }catch(e){}
+    }
     if(ctx && ctx.state==='suspended') ctx.resume();
-    return ctx; }
+    if(ctx && !started){ started=true; startAmbience(); }
+    return ctx;
+  }
+  let noiseB=null;
+  function noiseBuf(){
+    if(noiseB) return noiseB;
+    const len=ctx.sampleRate*2, b=ctx.createBuffer(1,len,ctx.sampleRate), d=b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    noiseB=b; return b;
+  }
+  function noiseLoop(dest, filters){
+    const src=ctx.createBufferSource(); src.buffer=noiseBuf(); src.loop=true;
+    let node=src;
+    filters.forEach(function(f){
+      const bi=ctx.createBiquadFilter(); bi.type=f[0]; bi.frequency.value=f[1];
+      if(f[2]) bi.Q.value=f[2];
+      node.connect(bi); node=bi;
+    });
+    const g=ctx.createGain(); g.gain.value=0;
+    node.connect(g); g.connect(dest);
+    src.start();
+    return g;
+  }
+  /* --- música generativa de bosque --- */
+  const CHORDS=[[220,277.2,329.6],[174.6,220,261.6],[196,246.9,293.7],[146.8,196,220]];
+  let chordI=0;
+  function padNote(f, t0, dur, vol){
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine'; o.frequency.value=f;
+    const o2=ctx.createOscillator(); o2.type='triangle'; o2.frequency.value=f*0.5;
+    const g2=ctx.createGain(); g2.gain.value=.35;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol, t0+dur*.4);
+    g.gain.linearRampToValueAtTime(0, t0+dur);
+    o.connect(g); o2.connect(g2); g2.connect(g); g.connect(musG);
+    o.start(t0); o2.start(t0); o.stop(t0+dur+.1); o2.stop(t0+dur+.1);
+  }
+  function padLoop(){
+    if(!ctx) return;
+    const t0=ctx.currentTime+.05, dur=9;
+    CHORDS[chordI].forEach(function(f,i){
+      padNote(f*(i===2?1.001:1), t0+i*.6, dur, .022);
+    });
+    chordI=(chordI+1)%CHORDS.length;
+    setTimeout(padLoop, 7500);
+  }
+  function birdChirp(){
+    if(!ctx || !musicOn || env.night>.5 || env.rain>.3 || (env.snow||0)>.3) return;
+    const t0=ctx.currentTime+.02;
+    const pan=(ctx.createStereoPanner)? ctx.createStereoPanner() : null;
+    const out=pan||musG; if(pan){ pan.pan.value=Math.random()*1.6-.8; pan.connect(musG); }
+    const n=2+Math.floor(Math.random()*3);
+    for(let k=0;k<n;k++){
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      const f0=2300+Math.random()*1400, tt=t0+k*.14;
+      o.type='sine';
+      o.frequency.setValueAtTime(f0, tt);
+      o.frequency.exponentialRampToValueAtTime(f0*1.5, tt+.05);
+      o.frequency.exponentialRampToValueAtTime(f0*.9, tt+.1);
+      g.gain.setValueAtTime(0,tt);
+      g.gain.linearRampToValueAtTime(.035, tt+.02);
+      g.gain.exponentialRampToValueAtTime(.0008, tt+.12);
+      o.connect(g); g.connect(out);
+      o.start(tt); o.stop(tt+.16);
+    }
+  }
+  function birdLoop(){
+    birdChirp();
+    setTimeout(birdLoop, 2800+Math.random()*6500);
+  }
+  function startAmbience(){
+    windG = noiseLoop(musG, [['lowpass',300]]);
+    rainG = noiseLoop(sfxG, [['highpass',900],['lowpass',5200]]);
+    riverG= noiseLoop(sfxG, [['highpass',380],['lowpass',1500]]);
+    padLoop();
+    setTimeout(birdLoop, 1800);
+    setInterval(applyEnv, 350);
+  }
+  function ramp(g, v){ if(g) g.gain.linearRampToValueAtTime(v, ctx.currentTime+.4); }
+  function applyEnv(){
+    if(!ctx) return;
+    ramp(rainG, env.rain*(env.storm?.2:.13));
+    ramp(windG, .008 + Math.min(.045, env.wind*.013) + (env.snow||0)*.012);
+    ramp(riverG, env.river*.14);
+  }
   function knock(freq, dur, vol, type){
-    const a=ac(); if(!a) return;
+    const a=ac(); if(!a||!sfxG) return;
     const t=a.currentTime;
     const o=a.createOscillator(), g=a.createGain();
     o.type=type||'triangle';
     o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(40,freq*.45), t+dur);
-    g.gain.setValueAtTime(vol, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(40,freq*.5), t+dur);
+    g.gain.setValueAtTime(vol*.8, t);
     g.gain.exponentialRampToValueAtTime(.001, t+dur);
-    o.connect(g).connect(a.destination);
+    o.connect(g); g.connect(sfxG);
     o.start(t); o.stop(t+dur+.02);
-    // golpe seco (ruido corto)
-    const len=a.sampleRate*.05, buf=a.createBuffer(1,len,a.sampleRate), d=buf.getChannelData(0);
-    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2);
-    const s=a.createBufferSource(), g2=a.createGain();
-    s.buffer=buf; g2.gain.value=vol*.5;
-    s.connect(g2).connect(a.destination); s.start(t);
+    const len=a.sampleRate*.04, buf=a.createBuffer(1,len,a.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.4);
+    const sN=a.createBufferSource(), g2=a.createGain();
+    sN.buffer=buf; g2.gain.value=vol*.3;
+    sN.connect(g2); g2.connect(sfxG); sN.start(t);
+  }
+  function ping(f, t0, vol, dur){
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol, t0+.015);
+    g.gain.exponentialRampToValueAtTime(.0008, t0+dur);
+    o.connect(g); g.connect(sfxG);
+    o.start(t0); o.stop(t0+dur+.05);
   }
   return {
     place(){ const now=performance.now();
       combo = (now-lastT<1600) ? Math.min(combo+1,8) : 0; lastT=now;
-      knock(170*(1+combo*.07), .14, .5); },
-    remove(){ knock(95, .2, .4, 'sine'); combo=0; },
-    deny(){ knock(70, .12, .25, 'square'); },
-    unlock(){ knock(240,.16,.4); setTimeout(()=>knock(320,.16,.42),110); setTimeout(()=>knock(430,.22,.45),220); },
-    paint(){ knock(300,.07,.2); setTimeout(()=>knock(380,.06,.16),70); },
-    coin(){ knock(620,.06,.18); setTimeout(()=>knock(840,.07,.15),60); },
-    levelup(){ [200,260,330,420,560].forEach((f,i)=>setTimeout(()=>knock(f,.18,.4),i*95)); },
-    expand(){ knock(60,.5,.55,'sine'); setTimeout(()=>knock(80,.4,.4,'sine'),180); setTimeout(()=>knock(110,.35,.3,'sine'),360); },
-    thunder(){ knock(45,.9,.5,'sine'); setTimeout(()=>knock(70,.6,.35,'sine'),120); },
-    tick(){ knock(420, .05, .12); },
+      knock(165*(1+combo*.07), .15, .42); },
+    remove(){ knock(95, .2, .3, 'sine'); combo=0; },
+    deny(){ knock(82, .14, .18, 'sine'); },
+    unlock(){ const a=ac(); if(!a) return;
+      [392,494,587].forEach((f,i)=>ping(f, a.currentTime+.02+i*.1, .06, .5)); },
+    paint(){ knock(300,.07,.16); setTimeout(()=>knock(380,.06,.13),70); },
+    coin(){ const a=ac(); if(!a) return;
+      ping(880, a.currentTime+.01, .05, .25); ping(1318.5, a.currentTime+.07, .04, .3); },
+    levelup(){ const a=ac(); if(!a) return;
+      [262,330,392,523,659].forEach((f,i)=>ping(f, a.currentTime+.02+i*.1, .065, .6)); },
+    expand(){ knock(60,.5,.45,'sine'); setTimeout(()=>knock(80,.4,.32,'sine'),180); setTimeout(()=>knock(110,.35,.24,'sine'),360); },
+    thunder(){ const a=ac(); if(!a) return;
+      knock(45,1.0,.4,'sine'); setTimeout(()=>knock(68,.7,.28,'sine'),140);
+      const g=noiseLoop(sfxG, [['lowpass',220]]);
+      g.gain.setValueAtTime(.16, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(.0008, a.currentTime+1.4); },
+    chime(){ const a=ac(); if(!a) return;
+      ping(659, a.currentTime+.02, .045, .9); ping(988, a.currentTime+.22, .035, 1.1); },
+    tick(){ knock(420, .05, .09); },
+    setEnv(o){ env=o; },
+    setMusic(b){ musicOn=b; if(musG) musG.gain.linearRampToValueAtTime(b?1:0, ctx.currentTime+.2); },
+    setSound(b){ soundOn=b; if(sfxG) sfxG.gain.linearRampToValueAtTime(b?1:0, ctx.currentTime+.2); },
+    isMusic(){ return musicOn; },
+    isSound(){ return soundOn; },
   };
 })();
 
@@ -2060,8 +2307,10 @@ let bodyG, hoodM, armL, armR;
   nose.position.set(0,.82,.2); bodyG.add(nose);
   const beard=new THREE.Mesh(new THREE.BoxGeometry(.2,.14,.1), mat(0xf2ead8,.9));
   beard.position.set(0,.72,.16); bodyG.add(beard);
-  hoodM=new THREE.Mesh(new THREE.ConeGeometry(.23,.52,9), mat(0xc05438,.8));
-  hoodM.position.y=1.06; hoodM.rotation.z=.06; bodyG.add(hoodM);
+  hoodM=new THREE.Mesh(new THREE.ConeGeometry(.285,.64,9), mat(0xc05438,.8));
+  hoodM.position.y=1.14; hoodM.rotation.z=.06; bodyG.add(hoodM);
+  const hoodBrim=new THREE.Mesh(new THREE.CylinderGeometry(.295,.31,.07,9), mat(0xa84630,.8));
+  hoodBrim.position.y=.86; bodyG.add(hoodBrim);
   bodyG.traverse(o=>{ if(o.isMesh){o.castShadow=true;} });
 }
 const charState = { pos:new THREE.Vector3(12.2,0,4.2), yaw:Math.PI*0.75, vy:0, moving:false };
@@ -2088,6 +2337,8 @@ addEventListener('keydown', e=>{
   if(e.code==='KeyQ') cycleMaterial(-1);
   if(e.code==='KeyE') cycleMaterial(1);
   if(e.code==='KeyC') toggleCatalog();
+  if(e.code==='KeyM') setMusicUI(!sfx.isMusic());
+  if(e.code==='KeyN') setSoundUI(!sfx.isSound());
 });
 addEventListener('keyup', e=>keys[e.code]=false);
 
@@ -2459,14 +2710,19 @@ function toggleCatalog(){
   sfx.tick();
 }
 document.getElementById('catBtn').addEventListener('click', toggleCatalog);
+const musBtn=document.getElementById('musBtn'), sndBtn=document.getElementById('sndBtn');
+function setMusicUI(b){ sfx.setMusic(b); musBtn.classList.toggle('on', b); saveSoon(); }
+function setSoundUI(b){ sfx.setSound(b); sndBtn.classList.toggle('on', b); saveSoon(); }
+musBtn.addEventListener('click', function(){ setMusicUI(!sfx.isMusic()); });
+sndBtn.addEventListener('click', function(){ setSoundUI(!sfx.isSound()); });
 catModal.addEventListener('click', function(e){ if(e.target===catModal) toggleCatalog(); });
 
 /* =====================================================================
    BUCLE PRINCIPAL
    ===================================================================== */
 const clock=new THREE.Clock();
-let T=0, smokeT=0, fountT=0;
-let windK=1;
+let T=0, smokeT=0, fountT=0, riverT=0, riverLvl=0;
+let windK=1, skyN=0;
 function easeOutBack(t){ const c=1.70158; return 1 + (c+1)*Math.pow(t-1,3) + c*Math.pow(t-1,2); }
 
 let lastErr='';
@@ -2550,6 +2806,22 @@ function frameInner(){
     }
   }
   updateSky(dt);
+  sfx.setEnv({rain:rainOp, snow:snowOp, wind:windK, river:riverLvl, night:skyN,
+    storm:(wxName==='storm')});
+  // el agua fluye y suena al acercarte
+  if(riverFlowMat) riverFlowMat.map.offset.x -= dt*0.32;
+  riverT+=dt;
+  if(riverT>0.18){
+    riverT=0;
+    const k=ground.scale.x;
+    let d=1e9;
+    for(const pt of riverPts){
+      const dx=charState.pos.x-pt.x*k, dz=charState.pos.z-pt.z*k;
+      const dd=dx*dx+dz*dz;
+      if(dd<d) d=dd;
+    }
+    riverLvl=Math.max(0, Math.min(1, 1-(Math.sqrt(d)-1.2)/7));
+  }
   if(renderer.xr.isPresenting){
     // posición real de la cabeza
     const xrCam=renderer.xr.getCamera(camera);
@@ -2563,23 +2835,22 @@ function frameInner(){
       world.position.y = headPos.y - 0.55;     // mesa 55 cm bajo tus ojos
     }
     grabUpdate();
-    // los paneles acompañan a la mesa y te miran
+    // paneles a distancia FIJA del jugador: siempre legibles, da igual la mesa
     if(headPos.lengthSq()>0.01){
-      headFwd.subVectors(headPos, world.position); headFwd.y=0;
-      if(headFwd.lengthSq()>0.01){
-        headFwd.normalize();
-        const rx=headFwd.z, rz=-headFwd.x;
-        hudPanel.position.set(
-          world.position.x + rx*0.78 + headFwd.x*0.2,
-          world.position.y + 0.34,
-          world.position.z + rz*0.78 + headFwd.z*0.2);
-        hudPanel.lookAt(headPos);
-        buildMenu.position.set(
-          world.position.x - rx*0.78 + headFwd.x*0.2,
-          world.position.y + 0.32,
-          world.position.z - rz*0.78 + headFwd.z*0.2);
-        buildMenu.lookAt(headPos);
-      }
+      headFwd.subVectors(world.position, headPos); headFwd.y=0;
+      if(headFwd.lengthSq()<0.01) headFwd.set(0,0,-1);
+      headFwd.normalize();
+      const D=1.02, rx=-headFwd.z, rz=headFwd.x;   // derecha del jugador
+      hudPanel.position.set(
+        headPos.x + headFwd.x*D + rx*0.52,
+        headPos.y - 0.16,
+        headPos.z + headFwd.z*D + rz*0.52);
+      hudPanel.lookAt(headPos);
+      buildMenu.position.set(
+        headPos.x + headFwd.x*D - rx*0.52,
+        headPos.y - 0.16,
+        headPos.z + headFwd.z*D - rz*0.52);
+      buildMenu.lookAt(headPos);
     }
     // hover del láser sobre el menú
     menuHover=false; menuCursor.visible=false;
@@ -2646,7 +2917,7 @@ function frameInner(){
       }
     }
     arr.needsUpdate=true;
-    fireflies.material.opacity=(.55+Math.sin(T*2.2)*.3)*Math.max(0,1-rainOp);
+    fireflies.material.opacity=(.55+Math.sin(T*2.2)*.3)*Math.max(0,1-Math.max(rainOp,snowOp));
     const m2=motes.geometry.attributes.position, s2=motes.userData.seed;
     for(let i=0;i<s2.length;i++){
       m2.setY(i, m2.getY(i)+Math.sin(T*.5+s2[i])*.002);
@@ -3206,7 +3477,7 @@ function gatherSave(){
     sm:selMat, mi:missionIdx, pc:paintedCount,
     fu:Array.from(firstUse), pieces:arr,
     cx:+charState.pos.x.toFixed(2), cy:+charState.pos.y.toFixed(2), cz:+charState.pos.z.toFixed(2),
-    light:lightSliderEl.value};
+    light:lightSliderEl.value, mus:sfx.isMusic()?1:0, snd:sfx.isSound()?1:0};
 }
 function saveNow(){
   if(!idbOK) return;
@@ -3268,6 +3539,8 @@ function restoreSave(d){
   });
   if(d.cx!=null){ charState.pos.set(d.cx, d.cy||0, d.cz); char.position.copy(charState.pos); }
   if(d.light!=null){ lightSliderEl.value=d.light; applyLight(d.light/100); }
+  if(d.mus!=null) setMusicUI(!!d.mus);
+  if(d.snd!=null) setSoundUI(!!d.snd);
   if(totalPlaced>=6){
     birdState.active=true; bird.visible=true;
     bird.position.set(10.6,2.45,7.2);
