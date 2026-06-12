@@ -74,6 +74,10 @@
   .tool .key{position:absolute;top:-7px;right:-5px;width:18px;height:18px;border-radius:6px;background:var(--gold);
     color:var(--ink);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;
     box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  #errBar{position:fixed;left:50%;bottom:0;transform:translateX(-50%);display:none;max-width:94vw;
+    padding:7px 16px;background:#5a2018;color:#ffd9c8;font-size:12px;font-family:monospace;
+    border-radius:10px 10px 0 0;border:1px solid #c05438;border-bottom:none;z-index:60}
+  #errBar.show{display:block}
   #missionCard{position:fixed;right:18px;bottom:76px;width:212px;padding:11px 14px;border-radius:13px;
     background:linear-gradient(180deg,rgba(58,40,24,.93),rgba(40,27,16,.93));
     border:1px solid rgba(234,179,94,.4);color:var(--cream);
@@ -247,12 +251,13 @@
 <div id="toolbar"></div>
 <div id="toast"></div>
 <div id="missionCard" style="display:none"></div>
+<div id="errBar"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.7.0';
+const GAME_VERSION = 'v1.7.1';
 console.log('%cClaro del Bosque '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
@@ -461,13 +466,14 @@ function updateSky(dt){
   const nightUp=Math.max(0, -Math.sin(cyc*Math.PI*2));
   const wl=wxCur.light;
   sun.color.copy(SUN_WARM).lerp(MOON, nightUp);
-  sun.intensity = LIT.sun * (0.32+sunUp*1.05) * wl;
-  spot.intensity= LIT.spot * (0.55+sunUp*.55) * wl;
-  hemi.intensity= LIT.hemi * (0.5+sunUp*.75) * wl;
-  amb.intensity = LIT.amb * (0.6+sunUp*.6) * wl;
+  const vr = renderer.xr.isPresenting;
+  sun.intensity = Math.max(vr?0.35:0, LIT.sun * (0.32+sunUp*1.05) * wl);
+  spot.intensity= Math.max(vr?0.3:0,  LIT.spot * (0.55+sunUp*.55) * wl);
+  hemi.intensity= Math.max(vr?0.2:0,  LIT.hemi * (0.5+sunUp*.75) * wl);
+  amb.intensity = Math.max(vr?0.08:0, LIT.amb * (0.6+sunUp*.6) * wl);
   rim.intensity = LIT.rim * (0.55+nightUp*.65);
-  plotGlow.intensity = LIT.glow;
-  renderer.toneMappingExposure = LIT.exp * (0.86+sunUp*.22);
+  plotGlow.intensity = Math.max(vr?0.18:0, LIT.glow);
+  renderer.toneMappingExposure = Math.max(vr?0.85:0, LIT.exp * (0.86+sunUp*.22));
   if(shaftMat) shaftMat.opacity = LIT.shaft * sunUp * Math.max(0,1-wxCur.cloud) * wl;
   if(skyMat){
     const b=1+3.3*sunUp*wl;
@@ -2453,13 +2459,19 @@ let windK=1;
 function easeOutBack(t){ const c=1.70158; return 1 + (c+1)*Math.pow(t-1,3) + c*Math.pow(t-1,2); }
 
 let lastErr='';
+function reportErr(where, e){
+  if(!lastErr) console.error(where, e);
+  lastErr=where+': '+((e && e.message)? e.message : String(e));
+  const eb=document.getElementById('errBar');
+  eb.textContent='⚠ '+lastErr; eb.classList.add('show');
+  hudDirty=true;
+}
 function frame(){
   try{ frameInner(); }
   catch(e){
-    if(!lastErr){ console.error('Error en el bucle:', e); }
-    lastErr=(e && e.message)? e.message : String(e);
-    hudDirty=true;
-    try{ renderer.render(scene, camera); }catch(e2){}
+    reportErr('bucle', e);
+    try{ renderer.render(scene, camera); }
+    catch(e2){ reportErr('render', e2); }
   }
 }
 function frameInner(){
@@ -2806,7 +2818,6 @@ function scalePlacedLights(sc){
 }
 lantern.userData.baseDist=lantern.distance;
 plotGlow.userData.baseDist=plotGlow.distance;
-if(renderer.xr.setFramebufferScaleFactor) renderer.xr.setFramebufferScaleFactor(0.9);
 renderer.xr.addEventListener('sessionstart', function(){
  try{
   controllers.forEach(function(c){ c.visible=true; });
@@ -2820,6 +2831,7 @@ renderer.xr.addEventListener('sessionstart', function(){
             sn:sun.shadow.camera.near, sf:sun.shadow.camera.far };
   world.scale.setScalar(WORLD_SC);
   worldYaw=0; worldDist=1.05; applyTable();
+  lastToastTxt='XR en marcha · espacio '+(usingLocalSpace?'local':'local-floor');
   // sombras y luces puntuales a escala de maqueta
   sun.shadow.camera.left=-SHADOW_R*WORLD_SC; sun.shadow.camera.right=SHADOW_R*WORLD_SC;
   sun.shadow.camera.top=SHADOW_R*WORLD_SC;   sun.shadow.camera.bottom=-SHADOW_R*WORLD_SC;
@@ -2829,7 +2841,7 @@ renderer.xr.addEventListener('sessionstart', function(){
   scene.fog.near=8; scene.fog.far=30;   // sin niebla sobre la mesa
   vrMoveTarget=null;
   drawLabel();
- }catch(e){ console.error('sessionstart:', e); lastErr=(e&&e.message)||String(e); hudDirty=true; }
+ }catch(e){ reportErr('sessionstart', e); }
 });
 renderer.xr.addEventListener('sessionend', function(){
   controllers.forEach(function(c){ c.visible=false; });
@@ -2880,13 +2892,20 @@ vrBtn.addEventListener('click', function(){
   navigator.xr.requestSession('immersive-vr',
       {requiredFeatures:['local-floor'], optionalFeatures:['bounded-floor','hand-tracking']})
     .catch(function(){
-      // el visor no concede 'local-floor': usamos 'local' (origen a la altura de la cabeza)
       usingLocalSpace=true;
       renderer.xr.setReferenceSpaceType('local');
       return navigator.xr.requestSession('immersive-vr', {optionalFeatures:['hand-tracking']});
     })
-    .then(function(session){ renderer.xr.setSession(session); })
-    .catch(function(err){ toast('No se pudo iniciar la sesión VR'); console.warn(err); });
+    .then(function(session){
+      renderer.xr.setSession(session);
+      document.getElementById('verTag').textContent=GAME_VERSION+(usingLocalSpace?' · L':' · LF');
+      // vigilante: si en 2,5 s no se presenta ni un fotograma, repórtalo
+      setTimeout(function(){
+        if(!renderer.xr.isPresenting)
+          reportErr('xr', 'sesión activa pero sin presentar (espacio de referencia)');
+      }, 2500);
+    })
+    .catch(function(err){ toast('No se pudo iniciar la sesión VR'); reportErr('requestSession', err); });
 });
 
 const lightSliderEl=document.getElementById('lightSlider');
