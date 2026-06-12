@@ -257,7 +257,7 @@
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.7.1';
+const GAME_VERSION = 'v1.8.1';
 console.log('%cClaro del Bosque '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
@@ -2257,6 +2257,7 @@ function selectCategory(i){
   renderBuildUI(); sfx.tick();
   toast('<b>'+c.name+' '+selected.name.toLowerCase()+'</b> · rueda para girar · Q/E material');
 }
+function selChanged(){ if(typeof vrHudMark==='function') vrHudMark(); }
 function cycleVariant(d){
   if(!selected) return;
   const c=CATS[curCatIdx()], n=c.vars.length;
@@ -2266,7 +2267,7 @@ function cycleVariant(d){
     if(isUnlockedDef(c.vars[vi])) break;
   }
   catVarIdx[c.id]=vi; selected=c.vars[vi];
-  renderBuildUI(); sfx.tick();
+  renderBuildUI(); sfx.tick(); selChanged();
   if(typeof drawLabel==='function') drawLabel();
   toast('<b>'+selected.name+'</b>');
 }
@@ -2540,6 +2541,31 @@ function frameInner(){
   }
   updateSky(dt);
   if(renderer.xr.isPresenting){
+    // posición real de la cabeza
+    const xrCam=renderer.xr.getCamera(camera);
+    headPos.setFromMatrixPosition(xrCam.matrixWorld);
+    if(placeTable && headPos.lengthSq()>0.01){
+      placeTable=false;
+      headFwd.set(-xrCam.matrixWorld.elements[8], 0, -xrCam.matrixWorld.elements[10]);
+      if(headFwd.lengthSq()<0.01) headFwd.set(0,0,-1);
+      headFwd.normalize();
+      world.position.copy(headPos).addScaledVector(headFwd, 1.05);
+      world.position.y = headPos.y - 0.55;     // mesa 55 cm bajo tus ojos
+    }
+    grabUpdate();
+    // el panel HUD acompaña a la mesa y te mira
+    if(headPos.lengthSq()>0.01){
+      headFwd.subVectors(headPos, world.position); headFwd.y=0;
+      if(headFwd.lengthSq()>0.01){
+        headFwd.normalize();
+        const rx=headFwd.z, rz=-headFwd.x;
+        hudPanel.position.set(
+          world.position.x + rx*0.72 + headFwd.x*0.2,
+          world.position.y + 0.34,
+          world.position.z + rz*0.72 + headFwd.z*0.2);
+        hudPanel.lookAt(headPos);
+      }
+    }
     hudCool-=dt;
     if(hudDirty && hudCool<=0){ drawVrHud(); hudDirty=false; hudCool=.35; }
   }
@@ -2623,8 +2649,8 @@ renderer.xr.setReferenceSpaceType('local-floor');
 const WORLD_SC = 1/16;             // escala maqueta
 let usingLocalSpace=false;         // respaldo si el visor no da 'local-floor'
 const tmpMat = new THREE.Matrix4();
+const headPos=new THREE.Vector3(), headFwd=new THREE.Vector3();
 let ctrlR=null, ctrlL=null, vrMoveTarget=null;
-let worldYaw=0, worldDist=1.05;    // metros reales
 
 function setRayFromController(c){
   tmpMat.identity().extractRotation(c.matrixWorld);
@@ -2641,9 +2667,9 @@ function vrPulse(intensity, ms){
 function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
 /* panel HUD del mundo: nivel, oro, clima, XP y misión, junto a la mesa */
-const hudCv=document.createElement('canvas'); hudCv.width=512; hudCv.height=288;
+const hudCv=document.createElement('canvas'); hudCv.width=512; hudCv.height=336;
 const hudTex=new THREE.CanvasTexture(hudCv);
-const hudPanel=new THREE.Mesh(new THREE.PlaneGeometry(.52,.29),
+const hudPanel=new THREE.Mesh(new THREE.PlaneGeometry(.52,.34),
   new THREE.MeshBasicMaterial({map:hudTex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
 hudPanel.position.set(0.78, 1.18, -0.95);
 hudPanel.rotation.y=-0.55;
@@ -2653,44 +2679,63 @@ let hudDirty=true, hudCool=0, lastToastTxt='';
 function vrHudMark(){ hudDirty=true; }
 function drawVrHud(){
   const g=hudCv.getContext('2d');
-  g.clearRect(0,0,512,288);
+  g.clearRect(0,0,512,336);
   g.fillStyle='rgba(40,27,16,.92)';
   g.beginPath();
-  if(g.roundRect) g.roundRect(4,4,504,280,22); else g.rect(4,4,504,280);
+  if(g.roundRect) g.roundRect(4,4,504,328,22); else g.rect(4,4,504,328);
   g.fill();
   g.strokeStyle='rgba(234,179,94,.55)'; g.lineWidth=4; g.stroke();
   g.textBaseline='middle'; g.textAlign='right';
   g.fillStyle='rgba(246,232,207,.55)'; g.font='500 17px monospace';
   g.fillText(GAME_VERSION, 492, 26);
   g.textAlign='left';
-  g.fillStyle='#eab35e'; g.font='700 34px Fredoka, sans-serif';
+  g.fillStyle='#eab35e'; g.font='700 32px Fredoka, sans-serif';
   const wxEl=document.getElementById('wxHud');
-  g.fillText('⭐ Nv '+level+'   🪙 '+gold+'   '+(wxEl?wxEl.textContent:''), 26, 44);
+  g.fillText('⭐ Nv '+level+'   🪙 '+gold+'   '+(wxEl?wxEl.textContent:''), 26, 42);
   // barra XP
-  g.fillStyle='rgba(0,0,0,.5)'; g.fillRect(26,72,460,16);
-  g.fillStyle='#eab35e'; g.fillRect(26,72, 460*Math.min(1,xp/xpNeed(level)), 16);
-  g.fillStyle='#f6e8cf'; g.font='500 22px Fredoka, sans-serif';
-  g.fillText('XP '+xp+' / '+xpNeed(level), 26, 112);
+  g.fillStyle='rgba(0,0,0,.5)'; g.fillRect(26,66,460,14);
+  g.fillStyle='#eab35e'; g.fillRect(26,66, 460*Math.min(1,xp/xpNeed(level)), 14);
+  // selección actual
+  let sel='Pasear';
+  if(selected){
+    const cn=CATS[curCatIdx()] ? CATS[curCatIdx()].name : '';
+    if(selected.tool==='paint') sel=cn+': '+selected.name+' · '+PAINTS[selPaint].name;
+    else if(selected.tool) sel=cn+': '+selected.name;
+    else sel=cn+': '+selected.name+' · '+MATERIALS[selMat].name;
+  }
+  g.fillStyle='#ffe2a8'; g.font='600 23px Fredoka, sans-serif';
+  g.fillText('🔨 '+sel, 26, 106);
   // misión
   if(birdState.active && missionIdx<MISSIONS.length){
     const m=MISSIONS[missionIdx], pr=m.p? m.p():null;
     g.fillStyle='#eab35e'; g.font='600 22px Fredoka, sans-serif';
-    g.fillText('🐦 '+m.n+'  ·  '+m.g+' 🪙', 26, 152);
-    g.fillStyle='#f6e8cf'; g.font='400 21px Fredoka, sans-serif';
-    g.fillText(m.d+(pr?('  ('+pr[0]+'/'+pr[1]+')'):''), 26, 184);
+    g.fillText('🐦 '+m.n+'  ·  '+m.g+' 🪙', 26, 142);
+    g.fillStyle='#f6e8cf'; g.font='400 20px Fredoka, sans-serif';
+    g.fillText(m.d+(pr?('  ('+pr[0]+'/'+pr[1]+')'):''), 26, 170);
   } else if(birdState.active){
-    g.fillStyle='#f6e8cf'; g.font='500 22px Fredoka, sans-serif';
-    g.fillText('🏆 Todas las misiones cumplidas', 26, 168);
+    g.fillStyle='#f6e8cf'; g.font='500 21px Fredoka, sans-serif';
+    g.fillText('🏆 Todas las misiones cumplidas', 26, 156);
   }
-  // error de diagnóstico (si lo hubiera)
-  if(lastErr){
-    g.fillStyle='#e07a6a'; g.font='600 19px monospace';
-    g.fillText('⚠ '+lastErr.slice(0,40), 26, 268);
+  // ampliación de terreno
+  const ex=EXPANSIONS[expansions];
+  if(ex && level>=ex.lvl){
+    g.fillStyle = (gold>=ex.cost)? '#9fd98a' : '#e0b08a';
+    g.font='600 20px Fredoka, sans-serif';
+    g.fillText('🌍 Ampliación '+['I','II','III'][expansions]+' · '+ex.cost+' 🪙 · clic stick izq. ×2', 26, 202);
   }
+  // chuleta de controles
+  g.fillStyle='rgba(246,232,207,.6)'; g.font='400 17px Fredoka, sans-serif';
+  g.fillText('Gatillo: colocar · Clic stick der.: quitar · A variante · B material', 26, 232);
+  g.fillText('Grip: mover mesa · 2 grips: escalar y girar · Gatillo izq.: gnomo', 26, 256);
   // último aviso
   if(lastToastTxt){
-    g.fillStyle='rgba(234,179,94,.92)'; g.font='500 21px Fredoka, sans-serif';
-    g.fillText(lastToastTxt.slice(0,42), 26, 244);
+    g.fillStyle='rgba(234,179,94,.95)'; g.font='500 21px Fredoka, sans-serif';
+    g.fillText(lastToastTxt.slice(0,42), 26, 290);
+  }
+  // error de diagnóstico
+  if(lastErr){
+    g.fillStyle='#e07a6a'; g.font='600 18px monospace';
+    g.fillText('⚠ '+lastErr.slice(0,42), 26, 316);
   }
   hudTex.needsUpdate=true;
 }
@@ -2735,9 +2780,8 @@ for(let i=0;i<2;i++){
     new THREE.MeshBasicMaterial({color:0xeab35e}));
   c.add(tip);
   c.addEventListener('selectstart', function(){ if(c===ctrlR) placePiece(); });
-  c.addEventListener('squeezestart', function(){
-    if(c===ctrlR){ setRayFromController(c); removeWithRaycaster(); }
-  });
+  c.addEventListener('squeezestart', function(){ grabSqueezeStart(c); });
+  c.addEventListener('squeezeend',  function(){ grabSqueezeEnd(c); });
   c.visible=false;                 // solo visibles dentro de la sesión VR
   rig.add(c);
   controllers.push(c);
@@ -2768,10 +2812,56 @@ function stepLight(d){
 }
 
 /* colocar el diorama como una mesa frente al jugador */
-function tableY(){ return usingLocalSpace ? -0.42 : 0.95; }
-function applyTable(){
-  world.rotation.y=worldYaw;
-  world.position.set(0, tableY(), -worldDist);
+/* --- agarre del mundo estilo Demeo --- */
+let placeTable=false;
+const grab={n:0, c1:null, c2:null,
+  wp0:new THREE.Vector3(), h0:new THREE.Vector3(),
+  d0:1, a0:0, S0:1, Y0:0, pivot:new THREE.Vector3(),
+  _p1:new THREE.Vector3(), _p2:new THREE.Vector3(), _m:new THREE.Vector3(), _v:new THREE.Vector3()};
+function ctrlPos(c,out){ return out.setFromMatrixPosition(c.matrixWorld); }
+function grabStartSingle(c){
+  grab.c1=c; grab.n=1;
+  grab.wp0.copy(world.position);
+  ctrlPos(c, grab.h0);
+}
+function grabStartDouble(){
+  ctrlPos(grab.c1, grab._p1); ctrlPos(grab.c2, grab._p2);
+  grab._m.addVectors(grab._p1, grab._p2).multiplyScalar(.5);
+  grab.d0=Math.max(.06, grab._p1.distanceTo(grab._p2));
+  grab.a0=Math.atan2(grab._p2.x-grab._p1.x, grab._p2.z-grab._p1.z);
+  grab.S0=world.scale.x; grab.Y0=world.rotation.y;
+  world.updateMatrixWorld();
+  grab.pivot.copy(grab._m); world.worldToLocal(grab.pivot);
+}
+function grabUpdate(){
+  if(grab.n===1){
+    ctrlPos(grab.c1, grab._p1);
+    world.position.copy(grab.wp0).add(grab._p1).sub(grab.h0);
+  } else if(grab.n===2){
+    ctrlPos(grab.c1, grab._p1); ctrlPos(grab.c2, grab._p2);
+    grab._m.addVectors(grab._p1, grab._p2).multiplyScalar(.5);
+    const d1=Math.max(.06, grab._p1.distanceTo(grab._p2));
+    const a1=Math.atan2(grab._p2.x-grab._p1.x, grab._p2.z-grab._p1.z);
+    const sc=Math.min(1/6, Math.max(1/40, grab.S0*(d1/grab.d0)));
+    const yaw=grab.Y0+(a1-grab.a0);
+    world.scale.setScalar(sc);
+    world.rotation.y=yaw;
+    grab._v.copy(grab.pivot).multiplyScalar(sc)
+      .applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+    world.position.copy(grab._m).sub(grab._v);
+  }
+}
+function grabSqueezeStart(c){
+  if(grab.n===0){ grabStartSingle(c); }
+  else if(grab.n===1 && c!==grab.c1){ grab.c2=c; grab.n=2; grabStartDouble(); }
+}
+function grabSqueezeEnd(c){
+  if(grab.n===2 && (c===grab.c1 || c===grab.c2)){
+    const rest=(c===grab.c1)? grab.c2 : grab.c1;
+    grab.n=0; grabStartSingle(rest);
+  } else if(grab.n===1 && c===grab.c1){
+    grab.n=0; grab.c1=null;
+  }
 }
 
 /* lectura de sticks y botones cada frame */
@@ -2786,6 +2876,10 @@ function vrUpdate(dt){
       if(sy<-.6 && !(ud.fy<-.6)) cycleTool(1);
       if(sy> .6 && !(ud.fy> .6)) cycleTool(-1);
       ud.fx=sx; ud.fy=sy;
+      // clic del stick derecho = quitar la pieza apuntada
+      const b3=!!(gp.buttons[3]&&gp.buttons[3].pressed);
+      if(b3&&!ud.b3){ setRayFromController(c); removeWithRaycaster(); }
+      ud.b3=b3;
       // A = variante · B = material
       const a4=!!(gp.buttons[4]&&gp.buttons[4].pressed);
       const a5=!!(gp.buttons[5]&&gp.buttons[5].pressed);
@@ -2793,8 +2887,16 @@ function vrUpdate(dt){
       if(a5&&!ud.a5){ if(selected && selected.tool==='paint') cyclePaint(1); else cycleMaterial(1); }
       ud.a4=a4; ud.a5=a5;
     } else {
-      if(Math.abs(sx)>.15) { worldYaw -= sx*dt*1.6; applyTable(); }
-      if(Math.abs(sy)>.15) { worldDist=Math.max(.5, Math.min(2.2, worldDist + sy*dt*.7)); applyTable(); }
+      if(grab.n===0){
+        if(Math.abs(sx)>.15) world.rotation.y -= sx*dt*1.6;
+        if(Math.abs(sy)>.15 && headPos.lengthSq()>0.01){
+          grab._v.subVectors(headPos, world.position); grab._v.y=0;
+          if(grab._v.lengthSq()>0.01){
+            grab._v.normalize();
+            world.position.addScaledVector(grab._v, -sy*dt*0.7);
+          }
+        }
+      }
       if(gp.buttons[0] && gp.buttons[0].pressed){
         setRayFromController(c);
         const hits=ray.intersectObjects(walkables.concat(piecesGroup.children), false);
@@ -2805,6 +2907,22 @@ function vrUpdate(dt){
       if(b4&&!ud.b4) stepLight(-0.12);
       if(b5&&!ud.b5) stepLight( 0.12);
       ud.b4=b4; ud.b5=b5;
+      // clic del stick izquierdo ×2 = comprar ampliación de terreno
+      const lb3=!!(gp.buttons[3]&&gp.buttons[3].pressed);
+      if(lb3&&!ud.lb3){
+        const ex=EXPANSIONS[expansions];
+        if(ex){
+          const now=performance.now();
+          if(ud.exArm && now-ud.exArm<4000){ ud.exArm=0; buyExpansion(expansions); }
+          else if(level>=ex.lvl && gold>=ex.cost){
+            ud.exArm=now;
+            toast('🌍 ¿Ampliar por <b>'+ex.cost+'</b> 🪙? Repite el clic');
+          } else {
+            buyExpansion(expansions);   // dará el motivo (nivel u oro)
+          }
+        }
+      }
+      ud.lb3=lb3;
     }
   }
 }
@@ -2822,7 +2940,6 @@ renderer.xr.addEventListener('sessionstart', function(){
  try{
   controllers.forEach(function(c){ c.visible=true; });
   hudPanel.visible=true; hudDirty=true;
-  hudPanel.position.y = usingLocalSpace ? -0.18 : 1.18;
   drawVrHud();
   scaleParticleMats(WORLD_SC);
   sun.shadow.mapSize.set(1024,1024);
@@ -2830,8 +2947,8 @@ renderer.xr.addEventListener('sessionstart', function(){
   vrSaved={ fogN:scene.fog.near, fogF:scene.fog.far,
             sn:sun.shadow.camera.near, sf:sun.shadow.camera.far };
   world.scale.setScalar(WORLD_SC);
-  worldYaw=0; worldDist=1.05; applyTable();
-  lastToastTxt='XR en marcha · espacio '+(usingLocalSpace?'local':'local-floor');
+  placeTable=true;
+  lastToastTxt='Grip: mueve la mesa · 2 grips: escala y gira';
   // sombras y luces puntuales a escala de maqueta
   sun.shadow.camera.left=-SHADOW_R*WORLD_SC; sun.shadow.camera.right=SHADOW_R*WORLD_SC;
   sun.shadow.camera.top=SHADOW_R*WORLD_SC;   sun.shadow.camera.bottom=-SHADOW_R*WORLD_SC;
@@ -2844,6 +2961,7 @@ renderer.xr.addEventListener('sessionstart', function(){
  }catch(e){ reportErr('sessionstart', e); }
 });
 renderer.xr.addEventListener('sessionend', function(){
+  grab.n=0; grab.c1=null; grab.c2=null;
   controllers.forEach(function(c){ c.visible=false; });
   hudPanel.visible=false;
   scaleParticleMats(1);
