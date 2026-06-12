@@ -19,6 +19,8 @@
     text-shadow:0 2px 8px rgba(40,20,5,.45);}
   #titleCard h1{font-size:22px;font-weight:700;letter-spacing:.5px}
   #titleCard p{font-size:13px;font-weight:500;opacity:.85;margin-top:2px}
+  #verTag{font-size:10.5px;color:var(--gold);opacity:.95;font-weight:600;
+    border:1px solid rgba(234,179,94,.45);border-radius:6px;padding:1px 6px;margin-left:5px}
   #counter{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;
     background:linear-gradient(180deg,var(--walnut-2),var(--walnut));border:1px solid rgba(234,179,94,.4);
     border-radius:99px;font-size:14px;font-weight:600;color:var(--gold);
@@ -204,7 +206,7 @@
 
 <div id="titleCard">
   <h1>Claro del Bosque</h1>
-  <p>Taller de construcción en madera</p>
+  <p>Taller de construcción en madera <span id="verTag"></span></p>
   <div id="lvlRow">
     <span id="lvlBadge">Nv 1</span>
     <span id="goldHud">🪙 0</span>
@@ -250,6 +252,8 @@
 <script>
 (function(){
 'use strict';
+const GAME_VERSION = 'v1.7.0';
+console.log('%cClaro del Bosque '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
 const PLATEAU_R = 16;
@@ -2378,7 +2382,7 @@ const catModal=document.getElementById('catModal');
 function renderCatalog(){
   const next=UNLOCKS.find(function(u){ return u.at>level; });
   const nextAt = next? next.at : -1;
-  let h='<div id="catHead"><h2>📖 Catálogo del taller</h2>'+
+  let h='<div id="catHead"><h2>📖 Catálogo del taller <small style="font-size:11px;opacity:.6">'+GAME_VERSION+'</small></h2>'+
         '<span><b>Nivel '+level+'</b> · 🪙 '+gold+' · '+totalPlaced+' piezas'+
         (next?(' · próximo desbloqueo al <b>Nv '+next.at+'</b>'):' · ¡completo! 🏆')+'</span>'+
         '<span id="catReset" title="Borrar partida">🗑</span>'+
@@ -2643,7 +2647,10 @@ function drawVrHud(){
   if(g.roundRect) g.roundRect(4,4,504,280,22); else g.rect(4,4,504,280);
   g.fill();
   g.strokeStyle='rgba(234,179,94,.55)'; g.lineWidth=4; g.stroke();
-  g.textBaseline='middle'; g.textAlign='left';
+  g.textBaseline='middle'; g.textAlign='right';
+  g.fillStyle='rgba(246,232,207,.55)'; g.font='500 17px monospace';
+  g.fillText(GAME_VERSION, 492, 26);
+  g.textAlign='left';
   g.fillStyle='#eab35e'; g.font='700 34px Fredoka, sans-serif';
   const wxEl=document.getElementById('wxHud');
   g.fillText('⭐ Nv '+level+'   🪙 '+gold+'   '+(wxEl?wxEl.textContent:''), 26, 44);
@@ -2991,6 +2998,7 @@ setInterval(function(){ if(idbOK) saveNow(); }, 25000);
 document.addEventListener('visibilitychange', function(){ if(document.hidden) saveNow(); });
 addEventListener('beforeunload', saveNow);
 
+document.getElementById('verTag').textContent=GAME_VERSION;
 selectCategory(0); renderBuildUI(); updateCounter();
 loadSave().then(function(d){
   if(d && d.tp>0){ restoreSave(d); }
