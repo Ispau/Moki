@@ -78,6 +78,28 @@
     padding:7px 16px;background:#5a2018;color:#ffd9c8;font-size:12px;font-family:monospace;
     border-radius:10px 10px 0 0;border:1px solid #c05438;border-bottom:none;z-index:60}
   #errBar.show{display:block}
+  #welcome{position:fixed;inset:0;background:rgba(5,8,12,.78);z-index:90;
+    display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+  #welcomeBox{max-width:560px;width:92vw;padding:30px 34px 26px;text-align:center;
+    background:linear-gradient(180deg,rgba(58,40,24,.97),rgba(34,23,14,.97));
+    border:1px solid rgba(234,179,94,.5);border-radius:22px;
+    box-shadow:0 30px 80px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,220,160,.15);
+    animation:wIn .6s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes wIn{from{transform:scale(.86) translateY(24px);opacity:0}}
+  #welcomeBox h2{font-size:30px;color:var(--gold);letter-spacing:.5px}
+  #welcomeBox h3{font-size:14px;font-weight:500;opacity:.8;margin:2px 0 14px}
+  .wIntro{font-size:14.5px;line-height:1.55;opacity:.92}
+  .wCols{display:flex;gap:14px;margin:16px 0;text-align:left}
+  .wCols>div{flex:1;background:rgba(0,0,0,.25);border:1px solid rgba(234,179,94,.22);
+    border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+  .wCols b{color:var(--gold);font-size:13.5px;margin-bottom:3px}
+  .wCols span{font-size:12.3px;opacity:.88;line-height:1.4}
+  .wCols i{font-style:normal;color:#ffd98f;font-weight:600}
+  .wTip{font-size:13px;line-height:1.5;opacity:.85}
+  #welcomeBtn{margin-top:16px;padding:12px 34px;font-family:inherit;font-size:16px;font-weight:600;
+    color:#2a1c10;background:linear-gradient(180deg,#f3c97e,#dfa14e);border:none;border-radius:14px;
+    cursor:pointer;box-shadow:0 6px 18px rgba(234,179,94,.35);transition:transform .15s}
+  #welcomeBtn:hover{transform:scale(1.06)}
   #missionCard{position:fixed;right:18px;bottom:76px;width:212px;padding:11px 14px;border-radius:13px;
     background:linear-gradient(180deg,rgba(58,40,24,.93),rgba(40,27,16,.93));
     border:1px solid rgba(234,179,94,.4);color:var(--cream);
@@ -267,12 +289,37 @@
 <div id="toast"></div>
 <div id="missionCard" style="display:none"></div>
 <div id="errBar"></div>
+<div id="welcome" style="display:none">
+  <div id="welcomeBox">
+    <h2>🌲 Moki and Piku</h2>
+    <h3>— Couzy Spaces —</h3>
+    <p class="wIntro">Un pequeño claro del bosque te espera entre la niebla.<br>
+    Constrúyele un hogar al gnomo, pieza a pieza, a la luz de los farolillos.</p>
+    <div class="wCols">
+      <div>
+        <b>🖱 En pantalla</b>
+        <span><i>WASD</i> mover al gnomo · <i>ratón</i> mirar</span>
+        <span><i>clic</i> colocar pieza · <i>rueda</i> girarla</span>
+        <span><i>clic dcho.</i> quitar · <i>C</i> catálogo · <i>F</i> foto</span>
+      </div>
+      <div>
+        <b>🥽 En VR</b>
+        <span><i>grip</i> agarra la mesa · <i>2 grips</i> escala y gira</span>
+        <span><i>gatillo</i> coloca y pulsa los menús con el láser</span>
+        <span><i>gatillo izq.</i> el gnomo camina a donde apuntes</span>
+      </div>
+    </div>
+    <p class="wTip">Construye para ganar XP, sube de nivel y desbloquea el taller.<br>
+    El petirrojo 🐦 traerá pequeños encargos… y el clima, sorpresas. ⛈❄️</p>
+    <button id="welcomeBtn">🔨 ¡A construir!</button>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.11.0';
+const GAME_VERSION = 'v1.12.0';
 console.log('%cMoki and Piku · Couzy Spaces '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
@@ -2907,16 +2954,16 @@ function frameInner(){
       headFwd.subVectors(world.position, headPos); headFwd.y=0;
       if(headFwd.lengthSq()<0.01) headFwd.set(0,0,-1);
       headFwd.normalize();
-      const D=1.02, rx=-headFwd.z, rz=headFwd.x;   // derecha del jugador
+      const D=1.04, rx=-headFwd.z, rz=headFwd.x;   // derecha del jugador
       hudPanel.position.set(
-        headPos.x + headFwd.x*D + rx*0.52,
+        headPos.x + headFwd.x*D + rx*0.60,
         headPos.y - 0.16,
-        headPos.z + headFwd.z*D + rz*0.52);
+        headPos.z + headFwd.z*D + rz*0.60);
       hudPanel.lookAt(headPos);
       buildMenu.position.set(
-        headPos.x + headFwd.x*D - rx*0.52,
+        headPos.x + headFwd.x*D - rx*0.60,
         headPos.y - 0.16,
-        headPos.z + headFwd.z*D - rz*0.52);
+        headPos.z + headFwd.z*D - rz*0.60);
       buildMenu.lookAt(headPos);
     }
     // hover del láser sobre el menú
@@ -3069,7 +3116,7 @@ function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 /* panel HUD del mundo: nivel, oro, clima, XP y misión, junto a la mesa */
 const hudCv=document.createElement('canvas'); hudCv.width=512; hudCv.height=336;
 const hudTex=new THREE.CanvasTexture(hudCv);
-const hudPanel=new THREE.Mesh(new THREE.PlaneGeometry(.52,.34),
+const hudPanel=new THREE.Mesh(new THREE.PlaneGeometry(.62,.407),
   new THREE.MeshBasicMaterial({map:hudTex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
 hudPanel.position.set(0.78, 1.18, -0.95);
 hudPanel.rotation.y=-0.55;
@@ -3106,13 +3153,13 @@ function drawVrHud(){
   g.fillStyle='#ffe2a8'; g.font='600 23px Fredoka, sans-serif';
   g.fillText('🔨 '+sel, 26, 106);
   // misión
-  if(birdState.active && missionIdx<MISSIONS.length){
+  if(missionIdx<MISSIONS.length){
     const m=MISSIONS[missionIdx], pr=m.p? m.p():null;
     g.fillStyle='#eab35e'; g.font='600 22px Fredoka, sans-serif';
     g.fillText('🐦 '+m.n+'  ·  '+m.g+' 🪙', 26, 142);
     g.fillStyle='#f6e8cf'; g.font='400 20px Fredoka, sans-serif';
     g.fillText(m.d+(pr?('  ('+pr[0]+'/'+pr[1]+')'):''), 26, 170);
-  } else if(birdState.active){
+  } else {
     g.fillStyle='#f6e8cf'; g.font='500 21px Fredoka, sans-serif';
     g.fillText('🏆 Todas las misiones cumplidas', 26, 156);
   }
@@ -3129,8 +3176,12 @@ function drawVrHud(){
   g.fillText('Grip: mover mesa · 2 grips: escalar y girar · Gatillo izq.: gnomo', 26, 256);
   // último aviso
   if(lastToastTxt){
-    g.fillStyle='rgba(234,179,94,.95)'; g.font='500 21px Fredoka, sans-serif';
-    g.fillText(lastToastTxt.slice(0,42), 26, 290);
+    g.fillStyle='rgba(234,179,94,.16)';
+    g.beginPath();
+    if(g.roundRect) g.roundRect(16, 274, 480, 32, 9); else g.rect(16, 274, 480, 32);
+    g.fill();
+    g.fillStyle='#ffd98f'; g.font='600 22px Fredoka, sans-serif';
+    g.fillText('💬 '+lastToastTxt.slice(0,38), 26, 290);
   }
   // error de diagnóstico
   if(lastErr){
@@ -3143,9 +3194,9 @@ function drawVrHud(){
 /* =====================================================================
    MENÚ DE CONSTRUCCIÓN EN VR · panel clicable con el láser
    ===================================================================== */
-const menuCv=document.createElement('canvas'); menuCv.width=640; menuCv.height=380;
+const menuCv=document.createElement('canvas'); menuCv.width=640; menuCv.height=460;
 const menuTex=new THREE.CanvasTexture(menuCv);
-const buildMenu=new THREE.Mesh(new THREE.PlaneGeometry(.58,.344),
+const buildMenu=new THREE.Mesh(new THREE.PlaneGeometry(.70,.503),
   new THREE.MeshBasicMaterial({map:menuTex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
 buildMenu.visible=false;
 scene.add(buildMenu);
@@ -3169,10 +3220,10 @@ function mmBtn(g,x,y,w,h,label,sel,lk,small){
 function drawBuildMenu(){
   const g=menuCv.getContext('2d');
   menuRegions=[];
-  g.clearRect(0,0,640,380);
+  g.clearRect(0,0,640,460);
   g.fillStyle='rgba(40,27,16,.94)';
   g.beginPath();
-  if(g.roundRect) g.roundRect(2,2,636,376,20); else g.rect(2,2,636,376);
+  if(g.roundRect) g.roundRect(2,2,636,456,20); else g.rect(2,2,636,456);
   g.fill();
   g.strokeStyle='rgba(234,179,94,.55)'; g.lineWidth=3; g.stroke();
   // categorías 5×2
@@ -3245,12 +3296,30 @@ function drawBuildMenu(){
   menuRegions.push({x:222,y:314,w:198,h:50, fn:function(){ requestPhoto(); }});
   mmBtn(g, 430, 314, 196, 50, '👁 Ocultar', false, false);
   menuRegions.push({x:430,y:314,w:196,h:50, fn:function(){ setPanelsHidden(true); }});
+  // ---- fila inferior: luz del teatro + música + efectos ----
+  const lv=+lightSliderEl.value;
+  g.fillStyle='rgba(246,232,207,.85)'; g.font='600 22px Fredoka, sans-serif';
+  g.textAlign='left'; g.textBaseline='middle';
+  g.fillText('💡', 18, 412);
+  g.fillStyle='rgba(0,0,0,.55)';
+  g.beginPath();
+  if(g.roundRect) g.roundRect(54, 398, 380, 28, 14); else g.rect(54, 398, 380, 28);
+  g.fill();
+  g.fillStyle='#eab35e';
+  g.beginPath();
+  if(g.roundRect) g.roundRect(54, 398, Math.max(18, 380*lv/100), 28, 14); else g.rect(54, 398, Math.max(18, 380*lv/100), 28);
+  g.fill();
+  menuRegions.push({x:46,y:386,w:396,h:52, fn:null, slider:true});
+  mmBtn(g, 452, 392, 82, 44, sfx.isMusic()? '🎵' : '🎵✕', sfx.isMusic(), !sfx.isMusic());
+  menuRegions.push({x:452,y:392,w:82,h:44, fn:function(){ setMusicUI(!sfx.isMusic()); menuDirty=true; }});
+  mmBtn(g, 544, 392, 82, 44, sfx.isSound()? '🔊' : '🔇', sfx.isSound(), !sfx.isSound());
+  menuRegions.push({x:544,y:392,w:82,h:44, fn:function(){ setSoundUI(!sfx.isSound()); menuDirty=true; }});
   menuTex.needsUpdate=true;
 }
 /* ---------- catálogo VR (paginado, clicable con láser) ---------- */
 const catCv=document.createElement('canvas'); catCv.width=800; catCv.height=540;
 const catTex=new THREE.CanvasTexture(catCv);
-const vrCatPanel=new THREE.Mesh(new THREE.PlaneGeometry(.74,.4995),
+const vrCatPanel=new THREE.Mesh(new THREE.PlaneGeometry(.86,.5805),
   new THREE.MeshBasicMaterial({map:catTex, transparent:true, fog:false, side:THREE.DoubleSide, depthWrite:false}));
 vrCatPanel.visible=false; scene.add(vrCatPanel);
 let vrCatOpen=false, vrCatPage=0, vrCatDirty=true, catRegions=[];
@@ -3403,7 +3472,11 @@ function menuClickAt(uv){
   const px=uv.x*640, py=(1-uv.y)*380;
   for(const r of menuRegions){
     if(px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h){
-      r.fn(); vrPulse(.35, 25); menuDirty=true;
+      if(r.slider){
+        const v=Math.max(0, Math.min(100, Math.round((px-54)/380*100)));
+        lightSliderEl.value=v; applyLight(v/100); saveSoon();
+      } else r.fn();
+      vrPulse(.35, 25); menuDirty=true;
       return true;
     }
   }
@@ -3818,8 +3891,14 @@ selectCategory(0); renderBuildUI(); updateCounter();
 loadSave().then(function(d){
   if(d && d.tp>0){ restoreSave(d); }
   else {
-    setTimeout(()=>toast('Construye, gana <b>XP</b> y sube de nivel para desbloquear el taller ✨'), 600);
-    if(!idbOK) setTimeout(()=>toast('💾 Guardado no disponible en este entorno · funciona al alojar el juego'), 4200);
+    const w=document.getElementById('welcome');
+    w.style.display='flex';
+    document.getElementById('welcomeBtn').addEventListener('click', function(){
+      w.style.display='none';
+      sfx.levelup();
+      toast('Construye, gana <b>XP</b> y sube de nivel para desbloquear el taller ✨');
+    });
+    if(!idbOK) setTimeout(()=>toast('💾 Guardado no disponible en este entorno · funciona al alojar el juego'), 5000);
   }
 });
 renderer.setAnimationLoop(frame);
