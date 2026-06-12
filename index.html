@@ -319,7 +319,7 @@
 <script>
 (function(){
 'use strict';
-const GAME_VERSION = 'v1.12.0';
+const GAME_VERSION = 'v1.12.1';
 console.log('%cMoki and Piku · Couzy Spaces '+GAME_VERSION, 'color:#eab35e;font-weight:bold;font-size:14px');
 const C  = 2.0;      // tamaño de celda
 const WH = 2.2;      // altura de muro / nivel
@@ -3469,7 +3469,7 @@ function showPolaroid(cv){
 }
 
 function menuClickAt(uv){
-  const px=uv.x*640, py=(1-uv.y)*380;
+  const px=uv.x*640, py=(1-uv.y)*460;
   for(const r of menuRegions){
     if(px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h){
       if(r.slider){
